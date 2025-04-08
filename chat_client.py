@@ -1,3 +1,6 @@
+import tkinter as tk
+from tkinter import simpledialog, messagebox
+import sys
 import socket
 import threading
 
@@ -6,18 +9,21 @@ FORMAT = 'utf-8'
 CLEAR_RIGHT = "\033[K"  # clean to the right of the cursor
 PREV_LINE = "\033[F"  # move cursor to the beginning of previous line
 
-alias = input("Enter an alias: ")
+stop_threads = threading.Event()
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-stop_threads = threading.Event()
-
 try:
+    alias = input("Enter an alias: ")
     client_socket.connect(('127.0.0.1', 5500))
-except ConnectionRefusedError:
-    print("[Connection Refused], Server might not be running")
+except KeyboardInterrupt:
+    print("\n[ERROR] KeyboardInterrupt raised")
+    exit()
+except Exception as e:
+    print(f"\n[ERROR] {e}")
+    exit()
 
 def client_receive():
-    while True:
+    while not stop_threads.is_set():
         try:
             message = client_socket.recv(1024).decode(FORMAT)
             if message == "alias?":
@@ -25,23 +31,32 @@ def client_receive():
             else:
                 print(message)
         except:
-            print("[ERROR]")
+            print("[Disconnecting]")
             client_socket.close()
             break #check later
 
 def client_send():
-    while True:
+    while not stop_threads.is_set():
         try:
-            message = f'{alias}: {input("Enter text:")}'
+            message = f'{alias}: {input("")}'
             print(f"{PREV_LINE}{message}{CLEAR_RIGHT}")
             client_socket.send(message.encode(FORMAT))
-        except:
-            print("[Disconnecting]")
+        except BaseException as e:
+            print(f"[Disconnecting] {e}")
             client_socket.close()
             break
 
-recieve_thread = threading.Thread(target=client_receive)
+recieve_thread = threading.Thread(target=client_receive, daemon=True)
 recieve_thread.start()
 
-send_thread = threading.Thread(target=client_send)
+send_thread = threading.Thread(target=client_send, daemon=True)
 send_thread.start()
+
+try:
+    recieve_thread.join()
+    send_thread.join()
+except:
+    print("Sending shutdown signal to threads")
+    stop_threads.set()
+    client_socket.close()
+    exit()
